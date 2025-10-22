@@ -65,8 +65,9 @@ export class DataLoader {
         const processed = data.map(row => {
             const processedRow = {};
             
-            // Конвертируем дату
-            processedRow.date = new Date(row.Date);
+            // Конвертируем дату из формата DD/MM/YYYY
+            const dateParts = row.Date.split('/');
+            processedRow.date = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`);
             
             // Конвертируем числовые значения
             processedRow.hour = parseInt(row.Hour);
@@ -108,6 +109,11 @@ export class DataLoader {
         });
 
         console.log(`Обработано ${processed.length} записей`);
+
+        if (processed.length === 0) {
+            throw new Error('Нет данных для обучения. Проверьте формат CSV файла и убедитесь, что все числовые поля содержат корректные значения.');
+        }
+
         this.processedData = processed;
         return processed;
     }
