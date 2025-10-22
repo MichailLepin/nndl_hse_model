@@ -314,16 +314,16 @@ export class DataLoader {
       return tf.tensor2d(buf, [n, this.horizon]);
     };
 
-    const xTrain = toTensor3D(trainWin.xs);
-    const yTrain = toTensor2D(trainWin.ys);
-    const xTest = toTensor3D(testWin.xs);
-    const yTest = toTensor2D(testWin.ys);
+    const xTrainTensor = toTensor3D(trainWin.xs);
+    const yTrainTensor = toTensor2D(trainWin.ys);
+    const xTestTensor = toTensor3D(testWin.xs);
+    const yTestTensor = toTensor2D(testWin.ys);
 
     return {
-      xTrain,
-      yTrain,
-      xTest,
-      yTest,
+      xTrain: xTrainTensor,
+      yTrain: yTrainTensor,
+      xTest: xTestTensor,
+      yTest: yTestTensor,
       featureNames,
       numFeatures,
       lookback: this.lookback,
