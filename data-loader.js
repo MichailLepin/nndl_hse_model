@@ -27,7 +27,8 @@ export class DataLoader {
                 try {
                     const csv = e.target.result;
                     const lines = csv.split('\n');
-                    const headers = lines[0].split(',').map(h => h.trim());
+                    // Sanitize headers to replace invalid characters
+                    const headers = lines[0].split(',').map(h => h.trim().replace(/�/g, '°'));
                     
                     const data = [];
                     for (let i = 1; i < lines.length; i++) {
