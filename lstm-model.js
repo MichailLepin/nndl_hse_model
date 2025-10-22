@@ -170,6 +170,10 @@ export class LSTMModel {
      * @returns {Object} - Метрики
      */
     calculateMetrics(yTrue, yPred) {
+        if (!yTrue || !yPred || yTrue.shape[0] === 0) {
+            console.log('Skipping metrics calculation for empty tensors.');
+            return { mae: null, mse: null, rmse: null, mape: null };
+        }
         console.log('Вычисляем метрики качества...');
         
         // Mean Absolute Error (MAE)
@@ -206,14 +210,16 @@ export class LSTMModel {
         const metrics = this.calculateMetrics(yTrue, yPred);
         
         const result = {
-            mae: await metrics.mae.data(),
-            mse: await metrics.mse.data(),
-            rmse: await metrics.rmse.data(),
-            mape: await metrics.mape.data()
+            mae: metrics.mae ? await metrics.mae.data() : [0],
+            mse: metrics.mse ? await metrics.mse.data() : [0],
+            rmse: metrics.rmse ? await metrics.rmse.data() : [0],
+            mape: metrics.mape ? await metrics.mape.data() : [0]
         };
 
         // Очищаем промежуточные тензоры
-        Object.values(metrics).forEach(tensor => tensor.dispose());
+        Object.values(metrics).forEach(tensor => {
+            if (tensor) tensor.dispose();
+        });
 
         return result;
     }
