@@ -158,7 +158,12 @@ export class DataLoader {
             // Нормализуем числовые признаки
             numericFeatures.forEach(feature => {
                 const params = this.normalizationParams[feature];
-                normalizedRow[feature] = (row[feature] - params.min) / (params.max - params.min);
+                const range = params.max - params.min;
+                if (range === 0) {
+                    normalizedRow[feature] = 0;
+                } else {
+                    normalizedRow[feature] = (row[feature] - params.min) / range;
+                }
             });
             
             // Добавляем циклические признаки для часа
