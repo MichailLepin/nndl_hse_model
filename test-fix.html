@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Case for Normalization Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+    </style>
+</head>
+<body>
+    <h1>Test Case for Normalization Fix</h1>
+    <div id="testResult" class="test-section"></div>
+
+    <script type="module">
+        import { DataLoader } from './data-loader.js';
+
+        async function runTest() {
+            const testResultDiv = document.getElementById('testResult');
+            try {
+                const dataLoader = new DataLoader();
+                const testData = [
+                    { temperature: 10, wind_speed: 5 },
+                    { temperature: 20, wind_speed: 5 },
+                    { temperature: 30, wind_speed: 5 },
+                ];
+
+                const normalizedData = dataLoader.normalizeFeatures(testData);
+
+                const containsNaN = normalizedData.some(row => isNaN(row.wind_speed));
+
+                if (containsNaN) {
+                    throw new Error('Normalization produced NaN values for constant feature.');
+                }
+
+                testResultDiv.innerHTML = '✅ Test Passed: Normalization of constant feature did not produce NaN values.';
+                testResultDiv.className = 'test-section success';
+            } catch (error) {
+                testResultDiv.innerHTML = `❌ Test Failed: ${error.message}`;
+                testResultDiv.className = 'test-section error';
+            }
+        }
+
+        runTest();
+    </script>
+</body>
+</html>
