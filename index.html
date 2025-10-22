@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bike Demand Predictor - LSTM</title>
+  
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 1.1em;
+      opacity: 0.9;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .section {
+      margin-bottom: 30px;
+    }
+
+    .section-title {
+      font-size: 1.5em;
+      color: #333;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #667eea;
+    }
+
+    .file-upload {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    input[type="file"] {
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      width: 100%;
+      cursor: pointer;
+      font-size: 1em;
+    }
+
+    input[type="file"]:hover {
+      border-color: #667eea;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 12px 30px;
+      font-size: 1em;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      color: white;
+    }
+
+    #train-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    #train-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    #predict-btn {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+
+    #predict-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      padding: 15px;
+      background: #f8f9fa;
+      border-left: 4px solid #667eea;
+      border-radius: 4px;
+      font-size: 1em;
+      color: #333;
+    }
+
+    #progress-container {
+      margin-top: 15px;
+      display: none;
+    }
+
+    .progress-bar-wrapper {
+      background: #e9ecef;
+      border-radius: 10px;
+      overflow: hidden;
+      height: 30px;
+      position: relative;
+    }
+
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 400px;
+      margin-top: 20px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+    }
+
+    canvas {
+      max-width: 100%;
+    }
+
+    .footer {
+      background: #f8f9fa;
+      padding: 20px;
+      text-align: center;
+      color: #666;
+      font-size: 0.9em;
+    }
+
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 1.8em;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+
+      button {
+        width: 100%;
+      }
+
+      .chart-container {
+        height: 300px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚴 Bike Demand Predictor</h1>
+      <p>LSTM-based Time Series Forecasting with TensorFlow.js</p>
+    </div>
+
+    <div class="content">
+      <!-- File Upload Section -->
+      <div class="section">
+        <h2 class="section-title">1. Upload Data</h2>
+        <div class="file-upload">
+          <input type="file" id="file-input" accept=".csv" />
+        </div>
+      </div>
+
+      <!-- Training Section -->
+      <div class="section">
+        <h2 class="section-title">2. Train Model</h2>
+        <div class="button-group">
+          <button id="train-btn">Train LSTM Model</button>
+          <button id="predict-btn">Make Predictions</button>
+        </div>
+        
+        <div id="progress-container">
+          <div class="progress-bar-wrapper">
+            <div id="progress-bar">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Section -->
+      <div class="section">
+        <h2 class="section-title">Status</h2>
+        <div class="status" id="status">
+          Ready. Please upload the CSV file.
+        </div>
+      </div>
+
+      <!-- Chart Section -->
+      <div class="section">
+        <h2 class="section-title">3. Results</h2>
+        <div class="chart-container">
+          <canvas id="prediction-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>Powered by TensorFlow.js & Chart.js | Client-side Machine Learning Demo</p>
+    </div>
+  </div>
+
+  <!-- Application Modules -->
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
+
