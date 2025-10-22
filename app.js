@@ -138,14 +138,18 @@ class BikeDemandApp {
         epochs,
         batchSize,
         onEpoch: (epoch, logs) => {
-          lossData.push(logs.loss);
-          maeData.push(logs.mae);
+          const loss = Number.isFinite(logs.loss) ? logs.loss : NaN;
+          const mae = Number.isFinite(logs.mae) ? logs.mae : NaN;
+          lossData.push(loss);
+          maeData.push(mae);
           this.trainChart.data.labels.push(epoch + 1);
           this.trainChart.data.datasets[0].data = lossData;
           this.trainChart.data.datasets[1].data = maeData;
           this.trainChart.update();
 
-          this.setMetrics(`Epoch ${epoch + 1}/${epochs} — loss: ${logs.loss.toFixed(5)} | MAE: ${logs.mae.toFixed(5)}`);
+          const lossStr = Number.isFinite(loss) ? loss.toFixed(5) : 'NaN';
+          const maeStr = Number.isFinite(mae) ? mae.toFixed(5) : 'NaN';
+          this.setMetrics(`Epoch ${epoch + 1}/${epochs} — loss: ${lossStr} | MAE: ${maeStr}`);
           this.setProgress(5 + Math.min(90, ((epoch + 1) / epochs) * 90));
         },
       });

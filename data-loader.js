@@ -50,8 +50,10 @@ export class DataLoader {
 
   // Normalize with min-max; in-place if arrays provided
   static _minMaxNormalize(value, min, max) {
+    if (!Number.isFinite(value)) return 0; // защита от NaN/Infinity
     if (max === min) return 0; // avoid NaN
-    return (value - min) / (max - min);
+    const normalized = (value - min) / (max - min);
+    return Number.isFinite(normalized) ? normalized : 0; // дополнительная проверка
   }
   static _minMaxDenormalize(value, min, max) {
     return value * (max - min) + min;
@@ -129,7 +131,8 @@ export class DataLoader {
 
       // Numeric
       for (const n of this.numericCols) {
-        feats.push(Number(r[n]));
+        const val = Number(r[n]);
+        feats.push(Number.isFinite(val) ? val : 0); // заменяем NaN/Infinity на 0
       }
       // Hour sin/cos
       const h = Number(r._hour) % 24;
@@ -160,6 +163,7 @@ export class DataLoader {
     const F = Xtrain[0].length;
     const fmin = new Float32Array(F).fill(Number.POSITIVE_INFINITY);
     const fmax = new Float32Array(F).fill(Number.NEGATIVE_INFINITY);
+    
     for (const row of Xtrain) {
       for (let j = 0; j < F; j++) {
         const v = row[j];
@@ -169,19 +173,52 @@ export class DataLoader {
         }
       }
     }
+    
+    // Проверяем и исправляем некорректные значения
+    for (let j = 0; j < F; j++) {
+      if (!Number.isFinite(fmin[j]) || !Number.isFinite(fmax[j])) {
+        fmin[j] = 0;
+        fmax[j] = 1;
+        console.warn(`⚠️ Признак ${j} (${this.featureNames[j] || 'unknown'}) имеет некорректные значения`);
+      }
+      if (fmax[j] === fmin[j]) {
+        fmax[j] = fmin[j] + 1;
+        console.warn(`⚠️ Признак ${j} (${this.featureNames[j] || 'unknown'}) имеет одинаковые min/max`);
+      }
+    }
+    
     this.featureMin = fmin;
     this.featureMax = fmax;
+    console.log(`✓ Feature scalers fitted for ${F} features`);
   }
 
   _fitLabelScaler(yTrain) {
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
+    let validCount = 0;
+    
     for (const v of yTrain) {
-      if (v < min) min = v;
-      if (v > max) max = v;
+      if (Number.isFinite(v)) {
+        if (v < min) min = v;
+        if (v > max) max = v;
+        validCount++;
+      }
     }
+    
+    if (validCount === 0 || !Number.isFinite(min) || !Number.isFinite(max)) {
+      console.error('❌ Не удалось вычислить min/max для меток');
+      min = 0;
+      max = 1;
+    }
+    
+    if (max === min) {
+      console.warn('⚠️ min == max для меток, добавляем небольшой диапазон');
+      max = min + 1;
+    }
+    
     this.labelMin = min;
     this.labelMax = max;
+    console.log(`✓ Label scaler: min=${min}, max=${max}`);
   }
 
   _normalizeFeatures(X) {
