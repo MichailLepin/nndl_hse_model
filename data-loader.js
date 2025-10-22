@@ -34,7 +34,6 @@ export class DataLoader {
                         const trimmed = h.trim();
                         // Заменяем проблемные символы на стандартные
                         return trimmed
-                            .replace(/[^\x00-\x7F]/g, '') // Удаляем не-ASCII символы
                             .replace(/Temperature.*C/, 'Temperature(°C)')
                             .replace(/Humidity.*%/, 'Humidity(%)')
                             .replace(/Wind speed.*m\/s/, 'Wind speed (m/s)')

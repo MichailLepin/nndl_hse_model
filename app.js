@@ -27,8 +27,6 @@ export class BikeDemandApp {
         
         // Получаем ссылки на элементы DOM
         this.elements = {
-            csvFile: document.getElementById('csvFile'),
-            loadDataBtn: document.getElementById('loadDataBtn'),
             trainBtn: document.getElementById('trainBtn'),
             predictBtn: document.getElementById('predictBtn'),
             resetBtn: document.getElementById('resetBtn'),
@@ -49,7 +47,9 @@ export class BikeDemandApp {
         // Инициализируем графики
         this.initializeCharts();
         
-        this.showStatus('Application ready. Please load a CSV file with data.', 'info');
+        // Автоматически загружаем данные
+        this.autoLoadData();
+        
         console.log('Application initialized');
     }
 
@@ -57,9 +57,6 @@ export class BikeDemandApp {
      * Настраивает обработчики событий для элементов интерфейса
      */
     setupEventListeners() {
-        // Загрузка данных
-        this.elements.loadDataBtn.addEventListener('click', () => this.loadData());
-        
         // Обучение модели
         this.elements.trainBtn.addEventListener('click', () => this.trainModel());
         
@@ -68,14 +65,6 @@ export class BikeDemandApp {
         
         // Сброс
         this.elements.resetBtn.addEventListener('click', () => this.reset());
-        
-        // Обработка выбора файла
-        this.elements.csvFile.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                this.elements.loadDataBtn.disabled = false;
-                this.showStatus(`File selected: ${e.target.files[0].name}`, 'info');
-            }
-        });
     }
 
     /**
@@ -187,6 +176,46 @@ export class BikeDemandApp {
                 }
             }
         });
+    }
+
+    /**
+     * Автоматически загружает данные из SeoulBikeData.csv
+     */
+    async autoLoadData() {
+        try {
+            this.showStatus('Автоматическая загрузка данных SeoulBikeData.csv...', 'info');
+            
+            // Загружаем CSV файл напрямую
+            const response = await fetch('./SeoulBikeData.csv');
+            if (!response.ok) {
+                throw new Error(`Ошибка загрузки файла: ${response.status}`);
+            }
+            
+            const csvText = await response.text();
+            
+            // Создаем объект File из текста
+            const blob = new Blob([csvText], { type: 'text/csv' });
+            const file = new File([blob], 'SeoulBikeData.csv', { type: 'text/csv' });
+            
+            // Загружаем и предобрабатываем данные
+            this.processedData = await this.dataLoader.loadAndPreprocess(file);
+            
+            // Проверяем, что данные загружены корректно
+            if (this.processedData.trainData.sequences.length === 0) {
+                throw new Error('Нет данных для обучения. Проверьте формат CSV файла и убедитесь, что все числовые поля содержат корректные значения.');
+            }
+            
+            this.isDataLoaded = true;
+            this.elements.trainBtn.disabled = false;
+            
+            this.showStatus(`Данные загружены успешно! Обучающих записей: ${this.processedData.trainData.sequences.length}, тестовых записей: ${this.processedData.testData.sequences.length}`, 'success');
+            
+            console.log('Data loaded:', this.processedData);
+            
+        } catch (error) {
+            console.error('Error loading data:', error);
+            this.showStatus(`Ошибка загрузки данных: ${error.message}`, 'error');
+        }
     }
 
     /**
@@ -421,8 +450,6 @@ export class BikeDemandApp {
         this.processedData = null;
         
         // Сбрасываем интерфейс
-        this.elements.csvFile.value = '';
-        this.elements.loadDataBtn.disabled = true;
         this.elements.trainBtn.disabled = true;
         this.elements.predictBtn.disabled = true;
         
@@ -444,7 +471,10 @@ export class BikeDemandApp {
         this.updateProgress(0);
         
         // Показываем статус
-        this.showStatus('Application reset. Load a new file to start working.', 'info');
+        this.showStatus('Application reset. Перезагружаем данные...', 'info');
+        
+        // Перезагружаем данные
+        this.autoLoadData();
         
         console.log('Application reset');
     }
