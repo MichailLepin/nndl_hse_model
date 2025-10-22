@@ -86,7 +86,18 @@ export class DataLoader {
             processedRow.functioning_day = row['Functioning Day'] === 'Yes' ? 1 : 0;
             
             return processedRow;
-        }).filter(row => !isNaN(row.rented_bike_count)); // Убираем строки с NaN
+        }).filter(row => {
+            // Check for NaN in all numeric features
+            return !isNaN(row.rented_bike_count) &&
+                   !isNaN(row.temperature) &&
+                   !isNaN(row.humidity) &&
+                   !isNaN(row.wind_speed) &&
+                   !isNaN(row.visibility) &&
+                   !isNaN(row.dew_point_temperature) &&
+                   !isNaN(row.solar_radiation) &&
+                   !isNaN(row.rainfall) &&
+                   !isNaN(row.snowfall);
+        });
 
         // Сортируем по дате и времени
         processed.sort((a, b) => {

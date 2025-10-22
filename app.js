@@ -332,10 +332,12 @@ export class BikeDemandApp {
      * @param {Object} epochData - Данные эпохи
      */
     updateTrainingChart(epochData) {
-        this.charts.training.data.labels.push(epochData.epoch);
-        this.charts.training.data.datasets[0].data.push(epochData.loss);
-        this.charts.training.data.datasets[1].data.push(epochData.mae);
-        this.charts.training.update();
+        if (epochData && typeof epochData.loss === 'number' && typeof epochData.mae === 'number') {
+            this.charts.training.data.labels.push(epochData.epoch);
+            this.charts.training.data.datasets[0].data.push(epochData.loss);
+            this.charts.training.data.datasets[1].data.push(epochData.mae);
+            this.charts.training.update();
+        }
     }
 
     /**
