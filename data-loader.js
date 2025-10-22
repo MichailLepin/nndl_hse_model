@@ -27,7 +27,26 @@ export class DataLoader {
                 try {
                     const csv = e.target.result;
                     const lines = csv.split('\n');
-                    const headers = lines[0].split(',').map(h => h.trim());
+                    
+                    // Исправляем заголовки с проблемными символами
+                    const rawHeaders = lines[0].split(',');
+                    const headers = rawHeaders.map(h => {
+                        const trimmed = h.trim();
+                        // Заменяем проблемные символы на стандартные
+                        return trimmed
+                            .replace(/[^\x00-\x7F]/g, '') // Удаляем не-ASCII символы
+                            .replace(/Temperature.*C/, 'Temperature(°C)')
+                            .replace(/Humidity.*%/, 'Humidity(%)')
+                            .replace(/Wind speed.*m\/s/, 'Wind speed (m/s)')
+                            .replace(/Visibility.*10m/, 'Visibility (10m)')
+                            .replace(/Dew point temperature.*C/, 'Dew point temperature(°C)')
+                            .replace(/Solar Radiation.*MJ\/m2/, 'Solar Radiation (MJ/m2)')
+                            .replace(/Rainfall.*mm/, 'Rainfall(mm)')
+                            .replace(/Snowfall.*cm/, 'Snowfall (cm)');
+                    });
+                    
+                    console.log('Оригинальные заголовки:', rawHeaders);
+                    console.log('Исправленные заголовки:', headers);
                     
                     const data = [];
                     for (let i = 1; i < lines.length; i++) {
@@ -50,7 +69,7 @@ export class DataLoader {
                 }
             };
             reader.onerror = () => reject(new Error('Ошибка чтения файла'));
-            reader.readAsText(file);
+            reader.readAsText(file, 'UTF-8');
         });
     }
 
@@ -61,8 +80,13 @@ export class DataLoader {
      */
     preprocessData(data) {
         console.log('Начинаем предобработку данных...');
+        console.log('Первая строка данных:', data[0]);
+        console.log('Количество строк:', data.length);
         
-        const processed = data.map(row => {
+        const processed = data.map((row, index) => {
+            if (index < 3) {
+                console.log(`Строка ${index}:`, row);
+            }
             const processedRow = {};
             
             // Конвертируем дату
@@ -86,9 +110,9 @@ export class DataLoader {
             processedRow.functioning_day = row['Functioning Day'] === 'Yes' ? 1 : 0;
             
             return processedRow;
-        }).filter(row => {
+        }).filter((row, index) => {
             // Check for NaN in all numeric features
-            return !isNaN(row.rented_bike_count) &&
+            const isValid = !isNaN(row.rented_bike_count) &&
                    !isNaN(row.temperature) &&
                    !isNaN(row.humidity) &&
                    !isNaN(row.wind_speed) &&
@@ -97,6 +121,22 @@ export class DataLoader {
                    !isNaN(row.solar_radiation) &&
                    !isNaN(row.rainfall) &&
                    !isNaN(row.snowfall);
+            
+            if (index < 5 && !isValid) {
+                console.log(`Строка ${index} отфильтрована:`, {
+                    rented_bike_count: row.rented_bike_count,
+                    temperature: row.temperature,
+                    humidity: row.humidity,
+                    wind_speed: row.wind_speed,
+                    visibility: row.visibility,
+                    dew_point_temperature: row.dew_point_temperature,
+                    solar_radiation: row.solar_radiation,
+                    rainfall: row.rainfall,
+                    snowfall: row.snowfall
+                });
+            }
+            
+            return isValid;
         });
 
         // Сортируем по дате и времени

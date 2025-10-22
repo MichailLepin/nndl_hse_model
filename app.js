@@ -205,6 +205,11 @@ export class BikeDemandApp {
             // Загружаем и предобрабатываем данные
             this.processedData = await this.dataLoader.loadAndPreprocess(file);
             
+            // Проверяем, что данные загружены корректно
+            if (this.processedData.trainData.sequences.length === 0) {
+                throw new Error('Нет данных для обучения. Проверьте формат CSV файла и убедитесь, что все числовые поля содержат корректные значения.');
+            }
+            
             this.isDataLoaded = true;
             this.elements.trainBtn.disabled = false;
             
