@@ -3,7 +3,7 @@
  * Использует TensorFlow.js для создания и обучения нейронной сети
  */
 
-export class LSTMModel {
+class LSTMModel {
     constructor() {
         this.model = null;
         this.isCompiled = false;

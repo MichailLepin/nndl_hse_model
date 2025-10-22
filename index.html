@@ -6,21 +6,6 @@
     <title>Bike Demand Forecasting - LSTM</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
-    <script>
-        // Проверяем загрузку Chart.js
-        if (typeof Chart === 'undefined') {
-            console.log('Пытаемся загрузить Chart.js альтернативным способом...');
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js';
-            script.onload = () => {
-                console.log('Chart.js загружен альтернативным способом');
-            };
-            script.onerror = () => {
-                console.error('Не удалось загрузить Chart.js');
-            };
-            document.head.appendChild(script);
-        }
-    </script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -241,45 +226,44 @@
         </div>
     </div>
 
-    <script type="module">
+    <script src="./data-loader.js"></script>
+    <script src="./lstm-model.js"></script>
+    <script src="./app.js"></script>
+    <script>
         // Ждем загрузки всех скриптов
-        window.addEventListener('load', async () => {
+        window.addEventListener('load', () => {
             // Ждем немного, чтобы все скрипты точно загрузились
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            // Проверяем, что все библиотеки загружены
-            if (typeof tf === 'undefined') {
-                console.error('TensorFlow.js не загружен!');
-                document.getElementById('status').textContent = 'Ошибка: TensorFlow.js не загружен. Обновите страницу.';
-                document.getElementById('status').className = 'status error';
-                document.getElementById('status').classList.remove('hidden');
-                return;
-            }
-            
-            if (typeof Chart === 'undefined') {
-                console.error('Chart.js не загружен!');
-                document.getElementById('status').textContent = 'Ошибка: Chart.js не загружен. Обновите страницу.';
-                document.getElementById('status').className = 'status error';
-                document.getElementById('status').classList.remove('hidden');
-                return;
-            }
-            
-            console.log('Все библиотеки загружены, инициализируем приложение...');
-            
-            try {
-                const { DataLoader } = await import('./data-loader.js');
-                const { LSTMModel } = await import('./lstm-model.js');
-                const { BikeDemandApp } = await import('./app.js');
-
-                // Инициализация приложения
-                const app = new BikeDemandApp();
-                app.initialize();
-            } catch (error) {
-                console.error('Ошибка загрузки модулей:', error);
-                document.getElementById('status').textContent = `Ошибка загрузки модулей: ${error.message}`;
-                document.getElementById('status').className = 'status error';
-                document.getElementById('status').classList.remove('hidden');
-            }
+            setTimeout(() => {
+                // Проверяем, что все библиотеки загружены
+                if (typeof tf === 'undefined') {
+                    console.error('TensorFlow.js не загружен!');
+                    document.getElementById('status').textContent = 'Ошибка: TensorFlow.js не загружен. Обновите страницу.';
+                    document.getElementById('status').className = 'status error';
+                    document.getElementById('status').classList.remove('hidden');
+                    return;
+                }
+                
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js не загружен!');
+                    document.getElementById('status').textContent = 'Ошибка: Chart.js не загружен. Обновите страницу.';
+                    document.getElementById('status').className = 'status error';
+                    document.getElementById('status').classList.remove('hidden');
+                    return;
+                }
+                
+                console.log('Все библиотеки загружены, инициализируем приложение...');
+                
+                try {
+                    // Инициализация приложения
+                    const app = new BikeDemandApp();
+                    app.initialize();
+                } catch (error) {
+                    console.error('Ошибка инициализации приложения:', error);
+                    document.getElementById('status').textContent = `Ошибка инициализации: ${error.message}`;
+                    document.getElementById('status').className = 'status error';
+                    document.getElementById('status').classList.remove('hidden');
+                }
+            }, 100);
         });
     </script>
 </body>

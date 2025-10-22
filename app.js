@@ -3,10 +3,7 @@
  * Связывает все компоненты: загрузку данных, модель и интерфейс
  */
 
-import { DataLoader } from './data-loader.js';
-import { LSTMModel } from './lstm-model.js';
-
-export class BikeDemandApp {
+class BikeDemandApp {
     constructor() {
         this.dataLoader = new DataLoader();
         this.model = new LSTMModel();

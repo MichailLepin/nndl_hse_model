@@ -3,7 +3,7 @@
  * Обрабатывает CSV файлы, нормализует данные и создает последовательности для LSTM
  */
 
-export class DataLoader {
+class DataLoader {
     constructor() {
         this.rawData = null;
         this.processedData = null;
