@@ -1,96 +1,69 @@
 // lstm-model.js
-// Defines and trains the LSTM model using TensorFlow.js
+// Defines a 2-layer LSTM sequence-to-sequence regressor in TensorFlow.js.
+// Input: [batch, 24, num_features]
+// Output: [batch, 24] (next 24 hours of demand; linear activation)
 
-export class LSTMModel {
-  constructor(sequenceLength, numFeatures) {
-    this.sequenceLength = sequenceLength;
-    this.numFeatures = numFeatures;
-    this.model = null;
-    this.buildModel();
-  }
+export function createLstmModel(numFeatures) {
+  const model = tf.sequential();
 
-  /**
-   * Build the LSTM model architecture
-   */
-  buildModel() {
-    this.model = tf.sequential();
-
-    // First LSTM layer with 64 units, return sequences for next LSTM layer
-    this.model.add(tf.layers.lstm({
+  // First LSTM returns sequences for stacking
+  model.add(
+    tf.layers.lstm({
       units: 64,
       returnSequences: true,
-      inputShape: [this.sequenceLength, this.numFeatures],
-      dropout: 0.2,
-      recurrentDropout: 0.2
-    }));
+      inputShape: [24, numFeatures],
+    })
+  );
+  model.add(tf.layers.dropout({ rate: 0.2 }));
 
-    // Second LSTM layer with 32 units
-    this.model.add(tf.layers.lstm({
+  // Second LSTM reduces sequence to vector
+  model.add(
+    tf.layers.lstm({
       units: 32,
       returnSequences: false,
-      dropout: 0.2,
-      recurrentDropout: 0.2
-    }));
+    })
+  );
+  model.add(tf.layers.dropout({ rate: 0.2 }));
 
-    // Dense output layer with 24 units (predicting next 24 hours)
-    this.model.add(tf.layers.dense({
-      units: this.sequenceLength,
-      activation: 'linear'
-    }));
+  // Dense to 24 outputs (horizon)
+  model.add(
+    tf.layers.dense({
+      units: 24,
+      activation: "linear",
+    })
+  );
 
-    // Compile model with Adam optimizer and MSE loss
-    this.model.compile({
-      optimizer: tf.train.adam(0.001),
-      loss: 'meanSquaredError',
-      metrics: ['mae']
-    });
-  }
+  model.compile({
+    optimizer: tf.train.adam(),
+    loss: "meanSquaredError",
+    metrics: ["mae"],
+  });
 
-  /**
-   * Train the model
-   */
-  async train(trainX, trainY, epochs, batchSize, validationSplit, callbacks) {
-    const history = await this.model.fit(trainX, trainY, {
-      epochs: epochs,
-      batchSize: batchSize,
-      validationSplit: validationSplit,
-      shuffle: false, // Keep chronological order
-      callbacks: callbacks
-    });
-
-    return history;
-  }
-
-  /**
-   * Make predictions
-   */
-  predict(testX) {
-    return this.model.predict(testX);
-  }
-
-  /**
-   * Evaluate the model on test data
-   */
-  evaluate(testX, testY) {
-    const result = this.model.evaluate(testX, testY);
-    return result;
-  }
-
-  /**
-   * Get model summary
-   */
-  summary() {
-    this.model.summary();
-  }
-
-  /**
-   * Dispose model
-   */
-  dispose() {
-    if (this.model) {
-      this.model.dispose();
-    }
-  }
+  return model;
 }
 
+// Train the model with callbacks to stream progress.
+export async function trainModel(model, xTrain, yTrain, { epochs = 20, batchSize = 64, onEpoch, onBatch } = {}) {
+  const history = await model.fit(xTrain, yTrain, {
+    epochs,
+    batchSize,
+    shuffle: false, // time series: do NOT shuffle across time
+    callbacks: {
+      onEpochEnd: async (epoch, logs) => {
+        if (onEpoch) onEpoch(epoch, logs);
+        await tf.nextFrame();
+      },
+      onBatchEnd: async (batch, logs) => {
+        if (onBatch) onBatch(batch, logs);
+        // Yield to UI thread
+        await tf.nextFrame();
+      },
+    },
+  });
+  return history;
+}
 
+// Predict for a batch of test sequences. Returns a Tensor2D [N, 24]
+export function predictHorizon(model, xTest) {
+  return tf.tidy(() => model.predict(xTest));
+}

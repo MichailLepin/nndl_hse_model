@@ -1,280 +1,340 @@
 // data-loader.js
-// Handles CSV parsing, preprocessing, sequence creation, and train/test split
+// Utility module to load, preprocess, and window the bike-sharing data entirely in-browser.
+// - Parses CSV (expects headers).
+// - Casts date and hour, sorts chronologically.
+// - One-hot encodes seasons, holiday, functioning_day.
+// - Adds cyclical hour features (sin/cos).
+// - Min–max normalizes numeric features using TRAIN-ONLY stats.
+// - Builds sequences: lookback=24, horizon=24.
+// - Splits chronologically into train/test (default 80/20).
 
 export class DataLoader {
   constructor() {
-    this.rawData = [];
-    this.processedData = [];
-    this.sequences = [];
-    this.labels = [];
-    this.trainX = null;
-    this.trainY = null;
-    this.testX = null;
-    this.testY = null;
-    this.scaleParams = {};
-    this.numFeatures = 0;
-    this.testActuals = [];
-  }
+    this.lookback = 24;
+    this.horizon = 24;
+    this.trainSplit = 0.8;
 
-  /**
-   * Parse CSV file from uploaded file input
-   */
-  async loadCSV(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target.result;
-        this.parseCSV(text);
-        resolve();
-      };
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
-  }
-
-  /**
-   * Parse CSV text into raw data array
-   */
-  parseCSV(text) {
-    const lines = text.trim().split('\n');
-    const headers = lines[0].split(',');
-    
-    this.rawData = [];
-    for (let i = 1; i < lines.length; i++) {
-      const values = this.parseCSVLine(lines[i]);
-      if (values.length === headers.length) {
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header.trim()] = values[idx].trim();
-        });
-        this.rawData.push(row);
-      }
-    }
-  }
-
-  /**
-   * Parse a single CSV line, handling quoted values
-   */
-  parseCSVLine(line) {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        result.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    result.push(current);
-    return result;
-  }
-
-  /**
-   * Preprocess the data: encode features, normalize, create sequences
-   */
-  preprocessData(sequenceLength = 24, trainSplit = 0.8) {
-    // Convert and encode features
-    this.processedData = this.rawData.map(row => {
-      // Parse date
-      const dateParts = row['Date'].split('/');
-      const date = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`);
-      
-      // Parse numeric values
-      const hour = parseInt(row['Hour']);
-      const rentedBikeCount = parseFloat(row['Rented Bike Count']);
-      const temperature = parseFloat(row['Temperature(°C)']);
-      const humidity = parseFloat(row['Humidity(%)']);
-      const windSpeed = parseFloat(row['Wind speed (m/s)']);
-      const visibility = parseFloat(row['Visibility (10m)']);
-      const dewPoint = parseFloat(row['Dew point temperature(°C)']);
-      const solarRadiation = parseFloat(row['Solar Radiation (MJ/m2)']);
-      const rainfall = parseFloat(row['Rainfall(mm)']);
-      const snowfall = parseFloat(row['Snowfall (cm)']);
-      
-      // Cyclical encoding for hour
-      const hourSin = Math.sin(2 * Math.PI * hour / 24);
-      const hourCos = Math.cos(2 * Math.PI * hour / 24);
-      
-      // One-hot encode seasons
-      const seasons = row['Seasons'].trim();
-      const seasonSpring = seasons === 'Spring' ? 1 : 0;
-      const seasonSummer = seasons === 'Summer' ? 1 : 0;
-      const seasonAutumn = seasons === 'Autumn' ? 1 : 0;
-      const seasonWinter = seasons === 'Winter' ? 1 : 0;
-      
-      // One-hot encode holiday
-      const holiday = row['Holiday'].trim() === 'Holiday' ? 1 : 0;
-      
-      // One-hot encode functioning day
-      const functioningDay = row['Functioning Day'].trim() === 'Yes' ? 1 : 0;
-      
-      return {
-        date,
-        rentedBikeCount,
-        hourSin,
-        hourCos,
-        temperature,
-        humidity,
-        windSpeed,
-        visibility,
-        dewPoint,
-        solarRadiation,
-        rainfall,
-        snowfall,
-        seasonSpring,
-        seasonSummer,
-        seasonAutumn,
-        seasonWinter,
-        holiday,
-        functioningDay
-      };
-    });
-
-    // Normalize numeric features
-    this.normalizeFeatures();
-
-    // Create sequences
-    this.createSequences(sequenceLength);
-
-    // Split into train/test
-    this.splitData(trainSplit);
-  }
-
-  /**
-   * Normalize features using min-max scaling
-   */
-  normalizeFeatures() {
-    const featuresToNormalize = [
-      'temperature', 'humidity', 'windSpeed', 'visibility',
-      'dewPoint', 'solarRadiation', 'rainfall', 'snowfall', 'rentedBikeCount'
+    this.numericCols = [
+      "temperature",
+      "humidity",
+      "wind_speed",
+      "visibility",
+      "dew_point_temperature",
+      "solar_radiation",
+      "rainfall",
+      "snowfall",
     ];
 
-    featuresToNormalize.forEach(feature => {
-      const values = this.processedData.map(row => row[feature]);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const range = max - min || 1; // Avoid division by zero
+    this.catCols = ["seasons", "holiday", "functioning_day"];
 
-      this.scaleParams[feature] = { min, max, range };
+    // Fitted on training set only
+    this.featureMin = null;
+    this.featureMax = null;
+    this.labelMin = null;
+    this.labelMax = null;
 
-      this.processedData.forEach(row => {
-        row[feature] = (row[feature] - min) / range;
+    this.featureNames = []; // after expansion (num + hour_sin/cos + one-hots)
+  }
+
+  async parseCSVFile(file) {
+    return new Promise((resolve, reject) => {
+      Papa.parse(file, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: (results) => resolve(results.data),
+        error: (err) => reject(err),
       });
     });
   }
 
-  /**
-   * Create sequences of length sequenceLength for LSTM input
-   */
-  createSequences(sequenceLength) {
-    this.sequences = [];
-    this.labels = [];
-    this.testActuals = [];
-
-    const featureKeys = [
-      'hourSin', 'hourCos', 'temperature', 'humidity', 'windSpeed',
-      'visibility', 'dewPoint', 'solarRadiation', 'rainfall', 'snowfall',
-      'seasonSpring', 'seasonSummer', 'seasonAutumn', 'seasonWinter',
-      'holiday', 'functioningDay', 'rentedBikeCount'
-    ];
-
-    this.numFeatures = featureKeys.length;
-
-    // Create sequences: use previous 24 hours to predict next 24 hours
-    for (let i = sequenceLength; i < this.processedData.length - sequenceLength; i++) {
-      const sequence = [];
-      
-      // Get previous 24 hours
-      for (let j = i - sequenceLength; j < i; j++) {
-        const features = featureKeys.map(key => this.processedData[j][key]);
-        sequence.push(features);
-      }
-
-      // Label: next 24 hours of rented bike count
-      const label = [];
-      for (let j = i; j < i + sequenceLength; j++) {
-        label.push(this.processedData[j]['rentedBikeCount']);
-      }
-
-      this.sequences.push(sequence);
-      this.labels.push(label);
-    }
+  // Normalize with min-max; in-place if arrays provided
+  static _minMaxNormalize(value, min, max) {
+    if (max === min) return 0; // avoid NaN
+    return (value - min) / (max - min);
+  }
+  static _minMaxDenormalize(value, min, max) {
+    return value * (max - min) + min;
   }
 
-  /**
-   * Split data chronologically into train and test sets
-   */
-  splitData(trainSplit) {
-    const splitIndex = Math.floor(this.sequences.length * trainSplit);
+  _ensureTypesAndSort(rows) {
+    // Ensure date and hour types; sort by timestamp asc
+    const out = rows
+      .map((r) => {
+        const dateStr = r.date || r.Date || r.dates || r["Date"];
+        const hourVal = r.hour ?? r.Hour ?? r["hour"] ?? r["Hour"];
+        const dateObj = new Date(dateStr);
+        const hourNum = typeof hourVal === "number" ? hourVal : parseInt(hourVal, 10);
+        const rented = r.rented_bike_count ?? r["rented_bike_count"] ?? r["Rented Bike Count"];
+        return {
+          ...r,
+          _date: dateObj,
+          _hour: hourNum,
+          _ts: dateObj.getTime() + (hourNum ?? 0) * 3600000,
+          _label: Number(rented),
+        };
+      })
+      .filter((r) => Number.isFinite(r._ts) && Number.isFinite(r._hour) && Number.isFinite(r._label))
+      .sort((a, b) => a._ts - b._ts);
+    return out;
+  }
 
-    const trainSequences = this.sequences.slice(0, splitIndex);
-    const trainLabels = this.labels.slice(0, splitIndex);
-    const testSequences = this.sequences.slice(splitIndex);
-    const testLabels = this.labels.slice(splitIndex);
+  _collectCategories(rows) {
+    const cats = {};
+    for (const col of this.catCols) {
+      cats[col] = new Set();
+    }
+    rows.forEach((r) => {
+      for (const col of this.catCols) {
+        const v = r[col];
+        if (v !== undefined && v !== null && v !== "") cats[col].add(String(v));
+      }
+    });
+    // Freeze order to arrays
+    const catMaps = {};
+    for (const col of this.catCols) {
+      catMaps[col] = Array.from(cats[col]).sort();
+    }
+    return catMaps;
+  }
+
+  _buildFeatureVectors(rows, catMaps) {
+    // Construct feature vectors per row:
+    // - numericCols
+    // - hour sin/cos
+    // - one-hot(seasons, holiday, functioning_day)
+    const featureNames = [];
+
+    // Numeric
+    for (const n of this.numericCols) featureNames.push(n);
+
+    // Hour cyclical
+    featureNames.push("hour_sin", "hour_cos");
+
+    // Categorical one-hots
+    for (const col of this.catCols) {
+      for (const v of catMaps[col]) {
+        featureNames.push(`${col}__${v}`);
+      }
+    }
+    this.featureNames = featureNames;
+
+    const X = new Array(rows.length);
+    const y = new Float32Array(rows.length);
+    const timestamps = new Array(rows.length);
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const feats = [];
+
+      // Numeric
+      for (const n of this.numericCols) {
+        feats.push(Number(r[n]));
+      }
+      // Hour sin/cos
+      const h = Number(r._hour) % 24;
+      const angle = (2 * Math.PI * h) / 24;
+      feats.push(Math.sin(angle), Math.cos(angle));
+
+      // One-hots
+      for (const col of this.catCols) {
+        const options = catMaps[col];
+        const rv = String(r[col]);
+        for (const opt of options) {
+          feats.push(rv === opt ? 1 : 0);
+        }
+      }
+      X[i] = feats;
+      y[i] = r._label;
+      timestamps[i] = r._ts;
+    }
+    return { X, y, timestamps, featureNames };
+  }
+
+  _splitChronologically(len) {
+    const splitIdx = Math.floor(len * this.trainSplit);
+    return { splitIdx };
+  }
+
+  _fitFeatureScalers(Xtrain) {
+    const F = Xtrain[0].length;
+    const fmin = new Float32Array(F).fill(Number.POSITIVE_INFINITY);
+    const fmax = new Float32Array(F).fill(Number.NEGATIVE_INFINITY);
+    for (const row of Xtrain) {
+      for (let j = 0; j < F; j++) {
+        const v = row[j];
+        if (Number.isFinite(v)) {
+          if (v < fmin[j]) fmin[j] = v;
+          if (v > fmax[j]) fmax[j] = v;
+        }
+      }
+    }
+    this.featureMin = fmin;
+    this.featureMax = fmax;
+  }
+
+  _fitLabelScaler(yTrain) {
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (const v of yTrain) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    this.labelMin = min;
+    this.labelMax = max;
+  }
+
+  _normalizeFeatures(X) {
+    const F = this.featureMin.length;
+    const out = new Array(X.length);
+    for (let i = 0; i < X.length; i++) {
+      const row = X[i];
+      const nr = new Float32Array(F);
+      for (let j = 0; j < F; j++) {
+        nr[j] = DataLoader._minMaxNormalize(row[j], this.featureMin[j], this.featureMax[j]);
+      }
+      out[i] = nr;
+    }
+    return out;
+  }
+
+  _normalizeLabels(y) {
+    const out = new Float32Array(y.length);
+    for (let i = 0; i < y.length; i++) {
+      out[i] = DataLoader._minMaxNormalize(y[i], this.labelMin, this.labelMax);
+    }
+    return out;
+  }
+
+  _buildWindows(X, y, timestamps, lookback, horizon, stride) {
+    // Returns {xs:[Tensors? no; raw arrays], ys:[], meta:{labelStartIdx:[], labelTimestamps:[]}}
+    // We'll convert to tensors later to control memory.
+    const xs = [];
+    const ys = [];
+    const labelStartIdx = [];
+    const labelTimestamps = [];
+    for (let t = lookback; t + horizon <= X.length; t += stride) {
+      const xSlice = X.slice(t - lookback, t); // length lookback
+      const ySlice = y.slice(t, t + horizon); // next 24 labels
+      xs.push(xSlice);
+      ys.push(ySlice);
+      labelStartIdx.push(t);
+      labelTimestamps.push(timestamps[t]); // timestamp at first label step
+    }
+    return { xs, ys, meta: { labelStartIdx, labelTimestamps } };
+  }
+
+  inverseScaleLabels(normalizedArray) {
+    // Accepts Float32Array or number[]
+    const min = this.labelMin;
+    const max = this.labelMax;
+    const out = new Float32Array(normalizedArray.length);
+    for (let i = 0; i < normalizedArray.length; i++) {
+      out[i] = DataLoader._minMaxDenormalize(normalizedArray[i], min, max);
+    }
+    return out;
+  }
+
+  async loadAndPrepare(file) {
+    const raw = await this.parseCSVFile(file);
+    const rows = this._ensureTypesAndSort(raw);
+    if (rows.length < this.lookback + this.horizon + 1) {
+      throw new Error("Dataset is too small after cleaning to build sequences.");
+    }
+
+    const catMaps = this._collectCategories(rows);
+    const { X, y, timestamps, featureNames } = this._buildFeatureVectors(rows, catMaps);
+    const { splitIdx } = this._splitChronologically(X.length);
+
+    // Split raw series
+    const XtrainRaw = X.slice(0, splitIdx);
+    const yTrainRaw = y.slice(0, splitIdx);
+    const tTrain = timestamps.slice(0, splitIdx);
+
+    const XtestRaw = X.slice(splitIdx);
+    const yTestRaw = y.slice(splitIdx);
+    const tTest = timestamps.slice(splitIdx);
+
+    // Fit scalers on training
+    this._fitFeatureScalers(XtrainRaw);
+    this._fitLabelScaler(yTrainRaw);
+
+    // Normalize features & labels
+    const Xtrain = this._normalizeFeatures(XtrainRaw);
+    const yTrain = this._normalizeLabels(yTrainRaw);
+    const Xtest = this._normalizeFeatures(XtestRaw);
+    const yTest = this._normalizeLabels(yTestRaw);
+
+    // Build windows
+    // - Train: stride=1 for more samples
+    // - Test: stride=24 for non-overlapping day blocks (easier plotting)
+    const trainWin = this._buildWindows(
+      Xtrain,
+      yTrain,
+      tTrain,
+      this.lookback,
+      this.horizon,
+      1
+    );
+    const testWin = this._buildWindows(
+      Xtest,
+      yTest,
+      tTest,
+      this.lookback,
+      this.horizon,
+      24
+    );
 
     // Convert to tensors
-    this.trainX = tf.tensor3d(trainSequences);
-    this.trainY = tf.tensor2d(trainLabels);
-    this.testX = tf.tensor3d(testSequences);
-    this.testY = tf.tensor2d(testLabels);
+    const numFeatures = featureNames.length;
+    const toTensor3D = (blocks) => {
+      // blocks: array of [lookback][features] Float32Arrays
+      const n = blocks.length;
+      const buf = new Float32Array(n * this.lookback * numFeatures);
+      let o = 0;
+      for (let i = 0; i < n; i++) {
+        const seq = blocks[i];
+        for (let t = 0; t < this.lookback; t++) {
+          const row = seq[t];
+          for (let f = 0; f < numFeatures; f++) {
+            buf[o++] = row[f];
+          }
+        }
+      }
+      return tf.tensor3d(buf, [n, this.lookback, numFeatures]);
+    };
+    const toTensor2D = (blocks) => {
+      const n = blocks.length;
+      const buf = new Float32Array(n * this.horizon);
+      let o = 0;
+      for (let i = 0; i < n; i++) {
+        const row = blocks[i];
+        for (let t = 0; t < this.horizon; t++) buf[o++] = row[t];
+      }
+      return tf.tensor2d(buf, [n, this.horizon]);
+    };
 
-    // Store test actuals for plotting (denormalized)
-    this.testActuals = testLabels.map(label => 
-      label.map(val => this.denormalize(val, 'rentedBikeCount'))
-    );
-  }
+    const xTrain = toTensor3D(trainWin.xs);
+    const yTrain = toTensor2D(trainWin.ys);
+    const xTest = toTensor3D(testWin.xs);
+    const yTest = toTensor2D(testWin.ys);
 
-  /**
-   * Denormalize a value
-   */
-  denormalize(normalizedValue, feature) {
-    const { min, range } = this.scaleParams[feature];
-    return normalizedValue * range + min;
-  }
-
-  /**
-   * Get number of features
-   */
-  getNumFeatures() {
-    return this.numFeatures;
-  }
-
-  /**
-   * Get training data
-   */
-  getTrainData() {
-    return { x: this.trainX, y: this.trainY };
-  }
-
-  /**
-   * Get test data
-   */
-  getTestData() {
-    return { x: this.testX, y: this.testY };
-  }
-
-  /**
-   * Get test actuals (denormalized)
-   */
-  getTestActuals() {
-    return this.testActuals;
-  }
-
-  /**
-   * Clean up tensors
-   */
-  dispose() {
-    if (this.trainX) this.trainX.dispose();
-    if (this.trainY) this.trainY.dispose();
-    if (this.testX) this.testX.dispose();
-    if (this.testY) this.testY.dispose();
+    return {
+      xTrain,
+      yTrain,
+      xTest,
+      yTest,
+      featureNames,
+      numFeatures,
+      lookback: this.lookback,
+      horizon: this.horizon,
+      testMeta: testWin.meta,
+      scalers: {
+        featureMin: this.featureMin,
+        featureMax: this.featureMax,
+        labelMin: this.labelMin,
+        labelMax: this.labelMax,
+      },
+    };
   }
 }
-
-
