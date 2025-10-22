@@ -95,6 +95,20 @@ export class LSTMModel {
 
         console.log(`Начинаем обучение: ${epochs} эпох, размер батча ${batchSize}`);
 
+        // Проверяем данные на корректность
+        const trainXData = await trainX.data();
+        const trainYData = await trainY.data();
+        
+        const hasNaN = trainXData.some(val => isNaN(val)) || trainYData.some(val => isNaN(val));
+        if (hasNaN) {
+            throw new Error('Обнаружены NaN значения во входных данных. Проверьте предобработку данных.');
+        }
+        
+        console.log(`Форма обучающих данных X: ${trainX.shape}`);
+        console.log(`Форма обучающих данных Y: ${trainY.shape}`);
+        console.log(`Диапазон значений X: ${Math.min(...trainXData)} - ${Math.max(...trainXData)}`);
+        console.log(`Диапазон значений Y: ${Math.min(...trainYData)} - ${Math.max(...trainYData)}`);
+
         this.trainingHistory = [];
 
         try {
@@ -106,17 +120,23 @@ export class LSTMModel {
                 shuffle: false, // Не перемешиваем временные ряды
                 callbacks: {
                     onEpochEnd: async (epoch, logs) => {
+                        // Проверяем на NaN и undefined значения
+                        const loss = typeof logs.loss === 'number' && !isNaN(logs.loss) ? logs.loss : 0;
+                        const valLoss = typeof logs.val_loss === 'number' && !isNaN(logs.val_loss) ? logs.val_loss : null;
+                        const mae = typeof logs.mae === 'number' && !isNaN(logs.mae) ? logs.mae : 0;
+                        const valMae = typeof logs.val_mae === 'number' && !isNaN(logs.val_mae) ? logs.val_mae : null;
+                        
                         const epochData = {
                             epoch: epoch + 1,
-                            loss: logs.loss,
-                            valLoss: logs.val_loss,
-                            mae: logs.mae,
-                            valMae: logs.val_mae
+                            loss: loss,
+                            valLoss: valLoss,
+                            mae: mae,
+                            valMae: valMae
                         };
                         
                         this.trainingHistory.push(epochData);
                         
-                        console.log(`Эпоха ${epoch + 1}/${epochs}: loss=${logs.loss.toFixed(4)}, val_loss=${logs.val_loss?.toFixed(4)}, mae=${logs.mae?.toFixed(4)}`);
+                        console.log(`Эпоха ${epoch + 1}/${epochs}: loss=${loss.toFixed(4)}, val_loss=${valLoss?.toFixed(4) || 'N/A'}, mae=${mae.toFixed(4)}`);
                         
                         if (onEpochEnd) {
                             onEpochEnd(epochData);

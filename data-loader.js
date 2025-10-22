@@ -173,7 +173,14 @@ export class DataLoader {
                 if (range === 0) {
                     normalizedRow[feature] = 0;
                 } else {
-                    normalizedRow[feature] = (row[feature] - params.min) / range;
+                    const normalizedValue = (row[feature] - params.min) / range;
+                    // Проверяем на NaN и Infinity
+                    if (isNaN(normalizedValue) || !isFinite(normalizedValue)) {
+                        console.warn(`Некорректное значение для признака ${feature}: ${row[feature]}, заменяем на 0`);
+                        normalizedRow[feature] = 0;
+                    } else {
+                        normalizedRow[feature] = normalizedValue;
+                    }
                 }
             });
             
@@ -218,14 +225,28 @@ export class DataLoader {
             // Создаем последовательность входных данных (24 часа)
             const sequence = [];
             for (let j = i - sequenceLength; j < i; j++) {
-                const features = this.featureNames.map(name => data[j][name]);
+                const features = this.featureNames.map(name => {
+                    const value = data[j][name];
+                    // Проверяем на NaN и Infinity
+                    if (isNaN(value) || !isFinite(value)) {
+                        console.warn(`Некорректное значение в последовательности: ${name} = ${value}, заменяем на 0`);
+                        return 0;
+                    }
+                    return value;
+                });
                 sequence.push(features);
             }
             
             // Создаем метки (следующие 24 часа)
             const label = [];
             for (let j = i; j < i + predictionLength; j++) {
-                label.push(data[j].rented_bike_count);
+                const value = data[j].rented_bike_count;
+                if (isNaN(value) || !isFinite(value)) {
+                    console.warn(`Некорректное значение метки: ${value}, заменяем на 0`);
+                    label.push(0);
+                } else {
+                    label.push(value);
+                }
             }
             
             sequences.push(sequence);
