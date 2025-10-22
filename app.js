@@ -71,6 +71,13 @@ export class BikeDemandApp {
      * Инициализирует графики Chart.js
      */
     initializeCharts() {
+        // Проверяем, что Chart.js загружен
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js не загружен!');
+            this.showStatus('Ошибка: Chart.js не загружен. Обновите страницу.', 'error');
+            return;
+        }
+        
         // График прогнозов
         this.charts.prediction = new Chart(this.elements.predictionChart, {
             type: 'line',
