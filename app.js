@@ -240,7 +240,6 @@ class BikeDemandApp {
           ],
         },
         options: {
-          parsing: false,
           responsive: true,
           animation: false,
           scales: {
